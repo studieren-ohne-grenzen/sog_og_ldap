@@ -1,0 +1,6 @@
+name = Organic groups LDAP (SOG Edition)
+description = "Synchronize LDAP groups (groupOfNames) with Drupal organic groups."
+package = LDAP integration
+dependencies[] = og
+dependencies[] = ldapgroups
+core=6.x

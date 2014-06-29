@@ -1,0 +1,15 @@
+*************************************
+**              TODO               **
+*************************************
+
+- Use hook_og to sync on group join/leave: http://drupalcontrib.org/api/drupal/contributions!og!og.api.php/function/hook_og/6
+
+
+
+*************************************
+**            CHANGELOG            **
+*************************************
+
+Organic groups LDAP 6.x-0.1
+===========================
+ - Initial module based on og_ldap: https://www.drupal.org/project/og_ldap
