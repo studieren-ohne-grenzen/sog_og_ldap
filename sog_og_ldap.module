@@ -11,7 +11,7 @@
  * Implementation of hook_user().
  * Main entry point for synchronization.
  */
-function og_ldap_user($op, &$edit, &$account, $category = NULL) {
+function sog_og_ldap_user($op, &$edit, &$account, $category = NULL) {
   static $og_done = FALSE; // Used to only add users to OG once per load
   if ($op == 'login' && $og_done == FALSE) {
     $og_done = TRUE;
@@ -22,7 +22,7 @@ function og_ldap_user($op, &$edit, &$account, $category = NULL) {
     if (!$account->ldap_authentified) {
       return;
     }
-    _og_ldap_update_user($account);
+    _sog_og_ldap_update_user($account);
   }
 }
 
@@ -30,7 +30,7 @@ function og_ldap_user($op, &$edit, &$account, $category = NULL) {
  * Syncronise the Groups a user is in with LDAP.
  * @param object $account The drupal account object of the user to be synchronized.
  */
-function _og_ldap_update_user($account) {
+function _sog_og_ldap_update_user($account) {
   // http://drupalcontrib.org/api/drupal/contributions!og!og.module/function/og_get_types/6
   $grouptypes = og_get_types('group');
   foreach ($grouptypes as $type) {
@@ -47,7 +47,7 @@ function _og_ldap_update_user($account) {
       $subs = og_get_subscriptions($account->uid);
 
       /* Find a list of groups the user is in from LDAP */
-      $groups = _og_ldap_get_groups($account, $type);
+      $groups = _sog_og_ldap_get_groups($account, $type);
 
       if ($groups) {
         /* Create any non-existant groups and add the user to all groups */
@@ -58,7 +58,7 @@ function _og_ldap_update_user($account) {
             // logging: https://www.drupal.org/project/flog
             flog_it($group, 'Group');
             flog_it($type, 'Type');
-            _og_ldap_add_group($group, $type);
+            _sog_og_ldap_add_group($group, $type);
           }
 
           /* Add the user to the OG group */
@@ -93,9 +93,17 @@ function _og_ldap_update_user($account) {
  * @param object $account The drupal account object of the user to be synchronized.
  * @param type $type A drupal content type used as organic group.
  */
-function _og_ldap_get_groups($account, $type) {
+function _sog_og_ldap_get_groups($account, $type) {
   global $_ldapauth_ldap;
-
+  module_load_include('module', 'ldapgroups', 'ldapgroups'); //don't know whether we really need this
+  module_load_include('inc', 'ldapgroups', 'ldapgroups');
+  
+    // Setup the global $_ldapgroups_ldap object.
+  if (!_ldapgroups_ldap_init($sid)) {
+    drupal_set_message(t('Could not initialize the LDAP connection object!'), 'error');
+    return FALSE;
+  }
+  
   $attr_name = variable_get('og_ldap_attribute_'. $type, 'description');
   $attr_value = variable_get('og_ldap_value_'. $type, 'DrupalGroups');
 
@@ -114,7 +122,7 @@ function _og_ldap_get_groups($account, $type) {
     }
   }
 
-  $ogmap = _og_ldap_og_map($type);
+  $ogmap = _sog_og_ldap_og_map($type);
   if (is_array($ogmap)) {
     foreach ($groups as $group) {
       foreach ($ogmap as $map) {
@@ -144,7 +152,7 @@ function _og_ldap_get_groups($account, $type) {
 /**
  * Helper function: if group doesn't exist, add it
  */
-function _og_ldap_add_group($group, $type) {
+function _sog_og_ldap_add_group($group, $type) {
   $group_name = $group['og'];
   $result = db_result(db_query("SELECT n.title FROM {node} n WHERE n.type = '%s' AND n.title = '%s'", variable_get('og_ldap_group_type_'. $type, 'group'), $group_name));
   if (!$result) {
@@ -170,7 +178,7 @@ function _og_ldap_add_group($group, $type) {
 /**
  * Parse the group strings and return an array of og groups and the matching ldap group
  */
-function _og_ldap_og_map($type) {
+function _sog_og_ldap_og_map($type) {
   $array = array();
   $str = variable_get('og_ldap_groups_'. $type, '');
   $lines = explode("\n", $str);
@@ -206,7 +214,7 @@ function _og_cn_name($group) {
  * Implementation of hook_perm().
  * Create drupal permission.
  */
-function og_ldap_perm() {
+function sog_og_ldap_perm() {
   return array('administer og ldap');
 }
 
@@ -214,20 +222,22 @@ function og_ldap_perm() {
  * Implementation of hook_menu().
  * Create drupal admin menu.
  */
-function og_ldap_menu() {
-  $items['admin/og/og_ldap'] = array(
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('og_ldap_admin'),
-    'access arguments' => array('administer og ldap'),
-    'title' => 'Organic groups LDAP integration',
-  );
-  return $items;
+function sog_og_ldap_menu() {
+    return array(
+        'admin/settings/ldap/oggroups' => array(
+            'title' => 'Organic groups LDAP integration',
+            'description' => 'Configure synchronization between LDAP groups and organic groups.',
+            'page callback' => 'drupal_get_form',
+            'page arguments' => array('sog_og_ldap_admin'),
+            'access arguments' => array('administer og ldap'),
+        ),
+    );
 }
 
 /**
  * Create the OG LDAP admin form
  */
-function og_ldap_admin() {
+function sog_og_ldap_admin() {
   $grouptypes = og_get_types('group');
 
   foreach ($grouptypes as $type) {
