@@ -26,6 +26,70 @@ function sog_og_ldap_user($op, &$edit, &$account, $category = NULL) {
   }
 }
 
+
+/**
+ * Implementation of hook_og().
+ * Main entry point for synchronization from Drupal OG back to LDAP.
+ * see: http://drupalcontrib.org/api/drupal/contributions!og!og.api.php/function/hook_og/6
+ * @param op What kind of action is being performed.
+ * @param gid The group Node ID.
+ * @param uid The User ID affected by the message. For 'user request', array of uids for group administrators.
+ * @param args A set of parameters that defines extended arguments. Varies by operation.
+ */
+function sog_og_ldap_og($op, $gid, $uid, $args) {
+//TODO: use the settings of ldap_integration module (or better: use some function of that module for the actions)
+//TODO: warning: settings hard-coded and duplicated!
+$server = 'ldap://localhost';
+$port = '389';
+$binddn = 'cn=admin,dc=esf';
+$bindpw = 'b6bc9a64f4daef302595d0660470f981';
+
+  //TODO: Ignore this hook if the action was triggered by ldap sync on login
+  $groupname = node_load($gid)->title;
+  $account = user_load($uid);
+  $subs = og_get_subscriptions($account->uid);
+  $groupdn = "ou=".$groupname.",ou=groups,o=sog-de,dc=esf";
+  $userdn = "uid=".$account->name.",ou=users,o=sog-de,dc=esf";
+  // Don't touch users who are not LDAP authenticated
+  if (!isset($account->ldap_authentified)) {
+    return;
+  }
+  if (!$account->ldap_authentified) {
+    return;
+  }
+
+  /* setup */
+  //connect and bind
+  $ldapconnect = ldap_connect($server,$port);
+  ldap_set_option($ldapconnect,LDAP_OPT_PROTOCOL_VERSION,3);
+  $r = ldap_bind($ldapconnect, $binddn, $bindpw);
+  if(!$r) {
+    drupal_set_message("bind to LDAP server failed");
+    return;
+  }
+
+  /* Add new group membership to LDAP */ 
+  if ($op == 'user insert') {
+    $add['member'] = $userdn;
+    $r = ldap_mod_add($ldapconnect, $groupdn, $add);
+    if(!$r) drupal_set_message("LDAP Sync: Error adding to ldap group '$groupname'.");
+    else drupal_set_message("LDAP Sync: Added LDAP user to group '$groupname'.");
+  }
+  
+  
+  /* Remove group membership on LDAP */
+  if ($op == 'user delete') {
+    if(!isset($subs[$gid])) return;  // if user is not a member of this group ignore
+    $removal['member'] = $userdn;
+    $r = ldap_mod_del($ldapconnect, $groupdn, $removal);
+    if(!$r) drupal_set_message("LDAP Sync: Error removing from ldap group '$groupname'.");
+    else drupal_set_message("LDAP Sync: Removed LDAP user from group '$groupname'.");
+  }
+  
+  
+  ldap_unbind($ldapconnect);
+}
+
 /**
  * Syncronise the Groups a user is in with LDAP.
  * @param object $account The drupal account object of the user to be synchronized.
@@ -34,7 +98,7 @@ function _sog_og_ldap_update_user($account) {
   // http://drupalcontrib.org/api/drupal/contributions!og!og.module/function/og_get_types/6
   $grouptypes = og_get_types('group');
   foreach ($grouptypes as $type) {
-    if (variable_get('og_ldap_'. $type, 0)) {
+    if (variable_get('sog_og_ldap_'. $type, 0)) {
       /* Get a list of existing OG nodes */
       $result = db_query("SELECT n.title FROM {node} n WHERE n.type = '%s'", $type);
       $all_groups = array();
