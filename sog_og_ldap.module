@@ -66,27 +66,32 @@ function _sog_og_ldap_update_user($account) {
           }
 
           /* Add the user to the OG group */
-          $sql = "SELECT n.nid FROM {node} n, {og} og WHERE n.nid = og.nid AND n.title = '%s' AND n.type = '%s'";
+          $sql = "SELECT n.nid, n.title FROM {node} n, {og} og WHERE n.nid = og.nid AND n.title = '%s' AND n.type = '%s'";
           $result = db_query_range($sql, array($group_name, $type), 0, 1);
           $row = db_fetch_array($result);
           if ($row) {
             $gid = $row['nid'];
             // http://drupalcontrib.org/api/drupal/contributions!og!og.module/function/og_save_subscription/6
             og_save_subscription($gid, $account->uid, array('is_active' => TRUE));
-            /* Remove the gid from the subs array. The groups left will be unsubscribed from */
             if (isset($subs[$gid])) {
-              unset($subs[$gid]);
-            }
+            	/* Remove the gid from the subs array. The groups left will be unsubscribed from */
+		unset($subs[$gid]);
+	    }
+	    else {
+	    	// if user was not subscribed on drupal, print message
+	      	drupal_set_message("LDAP Sync: Joined the group '".$row['title']."'.");
+	    }
           }
         }
       }
 
       /* Remove the user from groups when they are in OG but not in LDAP */
-      if (variable_get('og_ldap_ldap_only_'. $type, 0)) {
+      if (variable_get('sog_og_ldap_ldap_only_'. $type, 0)) {
         foreach ($subs as $sub) {
           // http://drupalcontrib.org/api/drupal/contributions!og!og.module/function/og_delete_subscription/6
           og_delete_subscription($sub['nid'], $sub['uid']);
-        }
+	  drupal_set_message("LDAP Sync: Left the group '".$sub['title']."'.");
+	}
       }
     }
   }
@@ -108,13 +113,13 @@ function _sog_og_ldap_get_groups($account, $type) {
     return FALSE;
   }
   
-  $attr_name = variable_get('og_ldap_attribute_'. $type, 'description');
-  $attr_value = variable_get('og_ldap_value_'. $type, 'DrupalGroups');
+  $attr_name = variable_get('sog_og_ldap_attribute_'. $type, 'description');
+  $attr_value = variable_get('sog_og_ldap_value_'. $type, 'DrupalGroups');
 
   // of ldap_integration module
   // TODO: is this appropriate to use from this module or should it only be used from within ldap_integration?
   $groups = _ldapgroups_detect_groups($account);
-
+  
   if (!$groups) {
     return FALSE;
   }
@@ -159,7 +164,6 @@ function _sog_og_ldap_get_groups($account, $type) {
     }
   }
 
-drupal_set_message(print_r($og_groups, true));
   return $og_groups;
 }
 
@@ -168,7 +172,7 @@ drupal_set_message(print_r($og_groups, true));
  */
 function _sog_og_ldap_add_group($group, $type) {
   $group_name = $group['og'];
-  $result = db_result(db_query("SELECT n.title FROM {node} n WHERE n.type = '%s' AND n.title = '%s'", variable_get('og_ldap_group_type_'. $type, 'group'), $group_name));
+  $result = db_result(db_query("SELECT n.title FROM {node} n WHERE n.type = '%s' AND n.title = '%s'", variable_get('sog_og_ldap_group_type_'. $type, 'group'), $group_name));
   if (!$result) {
     // TODO: This needs a config form (for og settings etc)
     $node = new stdClass();
@@ -194,7 +198,7 @@ function _sog_og_ldap_add_group($group, $type) {
  */
 function _sog_og_ldap_og_map($type) {
   $array = array();
-  $str = variable_get('og_ldap_groups_'. $type, '');
+  $str = variable_get('sog_og_ldap_groups_'. $type, '');
   $lines = explode("\n", $str);
   foreach ($lines as $line) {
     $chunks = explode('|', trim($line));
@@ -261,13 +265,13 @@ function sog_og_ldap_admin() {
       '#type' => 'fieldset',
       '#title' => t($name),
       '#collapsible' => TRUE,
-      '#collapsed' => !variable_get('og_ldap_'. $type, 0)
+      '#collapsed' => !variable_get('sog_og_ldap_'. $type, 0)
     );
 
-    $form['group_type_'. $type]['og_ldap_'. $type] = array(
+    $form['group_type_'. $type]['sog_og_ldap_'. $type] = array(
       '#type' => 'checkbox',
       '#title' => t('Enable'),
-      '#default_value' => variable_get('og_ldap_'. $type, 0),
+      '#default_value' => variable_get('sog_og_ldap_'. $type, 0),
       '#description' => t('Should this group type by synced with LDAP?'),
     );
 
@@ -275,43 +279,43 @@ function sog_og_ldap_admin() {
       '#type' => 'fieldset',
       '#title' => t('Attribute - Value method'),
       '#collapsible' => TRUE,
-      '#collapsed' => variable_get('og_ldap_attribute_'. $type, '') == '' && variable_get('og_ldap_value_'. $type, '') == '',
+      '#collapsed' => variable_get('sog_og_ldap_attribute_'. $type, '') == '' && variable_get('sog_og_ldap_value_'. $type, '') == '',
       '#description' => t('This method lets you define an attribute - value pair that will be used to map LDAP groups to Organic Groups. The first CN value will be used as the Organic Group name.'),
     );
 
-    $form['group_type_'. $type]['attr_value']['og_ldap_attribute_'. $type] = array(
+    $form['group_type_'. $type]['attr_value']['sog_og_ldap_attribute_'. $type] = array(
       '#type' => 'textfield',
       '#title' => t('Attribute'),
       '#description' => t('The attribute used to mark Organic Groups groups in LDAP'),
-      '#default_value' => variable_get('og_ldap_attribute_'. $type, ''),
+      '#default_value' => variable_get('sog_og_ldap_attribute_'. $type, ''),
     );
 
-    $form['group_type_'. $type]['attr_value']['og_ldap_value_'. $type] = array(
+    $form['group_type_'. $type]['attr_value']['sog_og_ldap_value_'. $type] = array(
       '#type' => 'textfield',
       '#title' => t('Value'),
       '#description' => t('The value used to mark Organic Groups groups in LDAP. Use "*" to sync all LDAP groups.'),
-      '#default_value' => variable_get('og_ldap_value_'. $type, ''),
+      '#default_value' => variable_get('sog_og_ldap_value_'. $type, ''),
     );
 
     $form['group_type_'. $type]['map'] = array(
       '#type' => 'fieldset',
       '#title' => t('Mapping Method'),
       '#collapsible' => TRUE,
-      '#collapsed' => variable_get('og_ldap_groups_'. $type, '') == '',
-      '#description' => t('This method lets you make a direct mapping between LDAP groups and Organic Group.'),
+      '#collapsed' => variable_get('sog_og_ldap_groups_'. $type, '') == '',
+      '#description' => t('This method lets you make a direct mapping between LDAP groups and Organic Group. These mappings are applied in addition to a rule using Attribute/Value above.'),
     );
 
-    $form['group_type_'. $type]['map']['og_ldap_groups_'. $type] = array(
+    $form['group_type_'. $type]['map']['sog_og_ldap_groups_'. $type] = array(
       '#type' => 'textarea',
       '#title' => t('Mapping of LDAP groups to Organic Groups'),
-      '#default_value' => variable_get('og_ldap_groups_'. $type, ''),
+      '#default_value' => variable_get('sog_og_ldap_groups_'. $type, ''),
       '#description' => t('Enter a list of LDAP groups and their Organic Group mappings, one per line with a | delimiter. Should be in the form [ldap group]|[organic group title].'),
     );
 
-    $form['group_type_'. $type]['og_ldap_ldap_only_'. $type] = array(
+    $form['group_type_'. $type]['sog_og_ldap_ldap_only_'. $type] = array(
       '#type' => 'checkbox',
       '#title' => t('LDAP members only'),
-      '#default_value' => variable_get('og_ldap_ldap_only_'. $type, 0),
+      '#default_value' => variable_get('sog_og_ldap_ldap_only_'. $type, 0),
       '#description' => t('Should members of an organic group that are not a member of a coresponding LDAP group be removed?'),
     );
 

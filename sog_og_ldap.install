@@ -12,17 +12,17 @@
  * Rename variables.
  */
 function og_ldap_update_6000() {
-  $group = variable_get('og_ldap_group_type', '');
-  variable_set('og_ldap_attribute_'. $group, variable_get('og_ldap_attribute', ''));
-  variable_set('og_ldap_value_'. $group, variable_get('og_ldap_value', ''));
-  variable_set('og_ldap_ldap_only_'. $group, variable_get('og_ldap_ldap_only', ''));
-  variable_set('og_ldap_groups_'. $group, variable_get('og_ldap_groups', ''));
-  variable_set('og_ldap_'. $group, TRUE);
+  $group = variable_get('sog_og_ldap_group_type', '');
+  variable_set('sog_og_ldap_attribute_'. $group, variable_get('sog_og_ldap_attribute', ''));
+  variable_set('sog_og_ldap_value_'. $group, variable_get('sog_og_ldap_value', ''));
+  variable_set('sog_og_ldap_ldap_only_'. $group, variable_get('sog_og_ldap_ldap_only', ''));
+  variable_set('sog_og_ldap_groups_'. $group, variable_get('sog_og_ldap_groups', ''));
+  variable_set('sog_og_ldap_'. $group, TRUE);
 
-  variable_del('og_ldap_group_type');
-  variable_del('og_ldap_attribute');
-  variable_del('og_ldap_value');
-  variable_del('og_ldap_ldap_only');
-  variable_del('og_ldap_groups');
-  variable_del('og_ldap_group_type');
+  variable_del('sog_og_ldap_group_type');
+  variable_del('sog_og_ldap_attribute');
+  variable_del('sog_og_ldap_value');
+  variable_del('sog_og_ldap_ldap_only');
+  variable_del('sog_og_ldap_groups');
+  variable_del('sog_og_ldap_group_type');
 }
