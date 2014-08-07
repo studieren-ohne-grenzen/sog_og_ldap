@@ -1,5 +1,5 @@
 name = Organic groups LDAP (SOG Edition)
-description = "Synchronize LDAP groups (groupOfNames) with Drupal organic groups."
+description = "Synchronize LDAP groups (groupOfNames) with Drupal organic groups in both directions. (WARNING: LDAP authentication credentials are currently hard-coded in the module source code.)"
 package = LDAP integration
 dependencies[] = og
 dependencies[] = ldapgroups
