@@ -7,6 +7,18 @@
  * @author Sebastian Leidig sebastian.leidig@gmail.com (adaptions for this fork of the module)
  */
 
+
+//TODO: use the settings of ldap_integration module (or better: use some function of that module for the actions)
+define("LDAP_SERVER", 'ldap://localhost');
+define("LDAP_PORT",   '389');
+define("LDAP_BIND_DN",        'cn=admin,dc=sog');
+define("LDAP_BIND_PASSWORD",  'b6bc9a64f4daef302595d0660470f981');
+define("LDAP_SUBTREE_GROUPS", ',ou=groups,o=sog-de,dc=sog');
+define("LDAP_SUBTREE_USERS",  ',ou=active,ou=people,o=sog-de,dc=sog');
+
+define("PATH_DASHBOARD_API",  '/var/www/studieren-ohne-grenzen.org/dashboard');
+
+
 /**
  * Implementation of hook_user().
  * Main entry point for synchronization.
@@ -37,19 +49,12 @@ function sog_og_ldap_user($op, &$edit, &$account, $category = NULL) {
  * @param args A set of parameters that defines extended arguments. Varies by operation.
  */
 function sog_og_ldap_og($op, $gid, $uid, $args) {
-//TODO: use the settings of ldap_integration module (or better: use some function of that module for the actions)
-//TODO: warning: settings hard-coded and duplicated!
-$server = 'ldap://localhost';
-$port = '389';
-$binddn = 'cn=admin,dc=esf';
-$bindpw = 'b6bc9a64f4daef302595d0660470f981';
-
   //TODO: Ignore this hook if the action was triggered by ldap sync on login
   $groupname = node_load($gid)->title;
   $account = user_load($uid);
   $subs = og_get_subscriptions($account->uid);
-  $groupdn = "ou=".$groupname.",ou=groups,o=sog-de,dc=esf";
-  $userdn = "uid=".$account->name.",ou=users,o=sog-de,dc=esf";
+  $groupdn = "ou=".$groupname . LDAP_SUBTREE_GROUPS;
+  $userdn = "uid=".$account->name . LDAP_SUBTREE_USERS;
   // Don't touch users who are not LDAP authenticated
   if (!isset($account->ldap_authentified)) {
     return;
@@ -60,20 +65,24 @@ $bindpw = 'b6bc9a64f4daef302595d0660470f981';
 
   /* setup */
   //connect and bind
-  $ldapconnect = ldap_connect($server,$port);
+  $ldapconnect = ldap_connect(LDAP_SERVER, LDAP_PORT);
   ldap_set_option($ldapconnect,LDAP_OPT_PROTOCOL_VERSION,3);
-  $r = ldap_bind($ldapconnect, $binddn, $bindpw);
+  $r = ldap_bind($ldapconnect, LDAP_BIND_DN, LDAP_BIND_PASSWORD);
   if(!$r) {
     drupal_set_message("bind to LDAP server failed");
     return;
   }
 
-  /* Add new group membership to LDAP */ 
-  if ($op == 'user insert') {
+  /* Add new group membership to LDAP */
+  /* MODIFIED Only send a group membership request via dashboard API */ 
+  if ($op == 'user insert' && strpos($_SERVER['REQUEST_URI'], 'og/subscribe')!=false) {
     $add['member'] = $userdn;
-    $r = ldap_mod_add($ldapconnect, $groupdn, $add);
-    if(!$r) drupal_set_message("LDAP Sync: Error adding to ldap group '$groupname'.");
-    else drupal_set_message("LDAP Sync: Added LDAP user to group '$groupname'.");
+    require_once PATH_DASHBOARD_API . '/vendor/autoload.php';
+    require_once PATH_DASHBOARD_API . '/app/config.php';
+    $sogApi = new SOG\Api\SogDashboardApi($dashboard_config);
+    $r = $sogApi->requestGroupMembership($account->name, strtolower($groupname));
+    if(!$r) drupal_set_message("LDAP Sync: Error adding to ldap group '$groupname'. There might already be a membership request.");
+    else drupal_set_message("LDAP Sync: Sent a membership request for '$groupname'. An admin of this group has to approve your request.");
   }
   
   
@@ -120,13 +129,11 @@ function _sog_og_ldap_update_user($account) {
           
           /* Create the group if it doesn't already exist */
           if (!in_array($group_name, $all_groups)) {
-            // skipping groups in LDAP that do not exist in OA
-            continue;
           
             // logging: https://www.drupal.org/project/flog
             //flog_it($group, 'Group');
             //flog_it($type, 'Type');
-            //_sog_og_ldap_add_group($group, $type);
+            _sog_og_ldap_add_group($group, $type);
           }
 
           /* Add the user to the OG group */
@@ -167,11 +174,11 @@ function _sog_og_ldap_update_user($account) {
  * @param type $type A drupal content type used as organic group.
  */
 function _sog_og_ldap_get_groups($account, $type) {
-  global $_ldapauth_ldap;
+  global $_ldapgroups_ldap;
   module_load_include('module', 'ldapgroups', 'ldapgroups'); //don't know whether we really need this
   module_load_include('inc', 'ldapgroups', 'ldapgroups');
-  
-    // Setup the global $_ldapgroups_ldap object.
+
+  // Setup the global $_ldapgroups_ldap object.
   if (!_ldapgroups_ldap_init($account)) {
     drupal_set_message(t('Could not initialize the LDAP connection object!'), 'error');
     return FALSE;
@@ -183,14 +190,14 @@ function _sog_og_ldap_get_groups($account, $type) {
   // of ldap_integration module
   // TODO: is this appropriate to use from this module or should it only be used from within ldap_integration?
   $groups = _ldapgroups_detect_groups($account);
-  
   if (!$groups) {
     return FALSE;
   }
 
   $og_groups = array();
-  if (!$_ldapauth_ldap->connection) {
-    if (!$_ldapauth_ldap->connect() || !$_ldapauth_ldap->connection) {
+
+  if (!$_ldapgroups_ldap->connection) {
+    if (!$_ldapgroups_ldap->connect() || !$_ldapgroups_ldap->connection) {
       return FALSE;
     }
   }
@@ -199,7 +206,7 @@ function _sog_og_ldap_get_groups($account, $type) {
   if (is_array($ogmap)) {
     foreach ($groups as $group) {
       foreach ($ogmap as $map) {
-        if (strstr($group, $map['ldap'])) {
+        if (strstr($map['ldap'],$group)) {
           $og_groups[] = $map;
         }
       }
@@ -227,7 +234,7 @@ function _sog_og_ldap_get_groups($account, $type) {
       }
     }
   }
-
+  
   return $og_groups;
 }
 
