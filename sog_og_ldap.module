@@ -13,7 +13,7 @@
  */
 function sog_og_ldap_user($op, &$edit, &$account, $category = NULL) {
   static $og_done = FALSE; // Used to only add users to OG once per load
-  if ($op == 'login' && $og_done == FALSE) {
+  if ($op == 'load' && $og_done == FALSE) {
     $og_done = TRUE;
     // Don't touch users who are not LDAP authenticated
     if (!isset($account->ldap_authentified)) {
